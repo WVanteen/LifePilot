@@ -1,0 +1,21 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.iml
+.idea/
+.vscode/
+# Native generated platform files are produced by flutter create on setup.
+# Drift generated files are regenerated locally.
+lib/**/*.g.dart
+# Personal keys / database
+.env
+.env.*
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
