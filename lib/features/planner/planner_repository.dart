@@ -11,13 +11,17 @@ class PlannerRepository {
   Stream<List<Task>> watchTasks() {
     final query = db.select(db.tasks)
       ..where((t) => t.deletedAt.isNull())
-      ..orderBy((t) => [OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)]);
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
+      ]);
     return query.watch();
   }
 
   Stream<List<JournalEntry>> watchJournal() {
     final query = db.select(db.journalEntries)
-      ..orderBy((t) => [OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)]);
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
+      ]);
     return query.watch();
   }
 

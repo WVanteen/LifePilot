@@ -28,7 +28,9 @@ class LedgerTransactions extends Table {
   TextColumn get kind => text()(); // expense | income | transfer | refund
   IntColumn get amountMinor => integer()(); // non-negative minor units
   TextColumn get currency => text().withDefault(const Constant('CNY'))();
+  @ReferenceName('sourceLedgerTransactions')
   TextColumn get accountId => text().references(Accounts, #id)();
+  @ReferenceName('targetLedgerTransactions')
   TextColumn get targetAccountId => text().nullable().references(Accounts, #id)();
   TextColumn get categoryId => text().nullable().references(Categories, #id)();
   TextColumn get refundOfId => text().nullable()();

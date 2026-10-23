@@ -24,6 +24,21 @@ final ledgerCategoriesProvider = StreamProvider<List<Category>>((ref) {
   return ref.watch(ledgerRepositoryProvider).watchCategories();
 });
 
+final ledgerAccountsProvider = StreamProvider<List<Account>>((ref) {
+  return ref.watch(ledgerRepositoryProvider).watchAccounts();
+});
+
+final currentMonthLedgerSummaryProvider = StreamProvider<LedgerSummary>((ref) {
+  return ref.watch(ledgerRepositoryProvider).watchMonthSummary(DateTime.now());
+});
+
+final currentMonthCategoryExpensesProvider =
+    StreamProvider<List<CategoryExpenseTotal>>((ref) {
+      return ref
+          .watch(ledgerRepositoryProvider)
+          .watchMonthExpenseByCategory(DateTime.now());
+    });
+
 final activeTasksProvider = StreamProvider<List<Task>>((ref) {
   return ref.watch(plannerRepositoryProvider).watchTasks();
 });
