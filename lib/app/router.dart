@@ -6,6 +6,8 @@ import '../features/home/home_page.dart';
 import '../features/ledger/ledger_page.dart';
 import '../features/planner/planner_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/accounts/accounts_page.dart';
+import '../features/accounts/account_form_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
@@ -27,7 +29,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/assistant', builder: (context, state) => const AssistantPage()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/settings', builder: (context, state) => const SettingsPage()),
+            GoRoute(path: '/settings', builder: (context, state) => const SettingsPage(), routes: [
+              GoRoute(path: 'accounts', builder: (context, state) => const AccountsPage(), routes: [
+                GoRoute(path: 'new', builder: (context, state) => const AccountFormPage()),
+                GoRoute(path: ':id/edit', builder: (context, state) => AccountFormPage(accountId: state.pathParameters['id']!)),
+              ]),
+            ]),
           ]),
         ],
       ),

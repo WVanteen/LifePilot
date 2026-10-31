@@ -32,11 +32,13 @@ class AccountRepository {
     required String accountType,
     required String currency,
     required int openingBalanceMinor,
+    bool makeDefault = false,
   }) async {
     final cleanName = _validate(name, accountType);
     final cleanCurrency = currency.trim().toUpperCase();
-    if (!RegExp(r'^[A-Z]{3}$').hasMatch(cleanCurrency))
+    if (!RegExp(r'^[A-Z]{3}$').hasMatch(cleanCurrency)) {
       throw const FormatException('请输入有效的三位币种代码');
+    }
     final id = const Uuid().v4();
     await db.transaction(() async {
       await db
@@ -51,7 +53,11 @@ class AccountRepository {
               createdAt: DateTime.now().toUtc().millisecondsSinceEpoch,
             ),
           );
-      await _resolveDefault();
+      if (makeDefault) {
+        await _saveDefault(id);
+      } else {
+        await _resolveDefault();
+      }
     });
     return id;
   }
@@ -61,17 +67,27 @@ class AccountRepository {
     required String name,
     required String accountType,
     required int openingBalanceMinor,
+    bool makeDefault = false,
   }) async {
     final cleanName = _validate(name, accountType);
-    final count = await (db.update(db.accounts)..where((a) => a.id.equals(id)))
-        .write(
-          AccountsCompanion(
-            name: Value(cleanName),
-            accountType: Value(accountType),
-            openingBalanceMinor: Value(openingBalanceMinor),
-          ),
-        );
-    if (count == 0) throw StateError('账户不存在');
+    await db.transaction(() async {
+      final count =
+          await (db.update(db.accounts)..where((a) => a.id.equals(id))).write(
+            AccountsCompanion(
+              name: Value(cleanName),
+              accountType: Value(accountType),
+              openingBalanceMinor: Value(openingBalanceMinor),
+            ),
+          );
+      if (count == 0) throw StateError('账户不存在');
+      if (makeDefault) {
+        final account = await getById(id);
+        if (account == null || !account.isActive) {
+          throw StateError('默认账户必须是启用账户');
+        }
+        await _saveDefault(id);
+      }
+    });
   }
 
   Future<Account?> getDefault() => db.transaction(_resolveDefault);

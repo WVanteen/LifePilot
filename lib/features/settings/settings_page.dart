@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../shared/section_card.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -12,15 +13,17 @@ class SettingsPage extends StatelessWidget {
       SizedBox(height: 8),
       Text('当前模式：个人本地数据。'),
       SizedBox(height: 8),
-      Text('默认账户：现金；默认币种：人民币。'),
+      Text('默认币种：人民币。'),
       SizedBox(height: 8),
       Text('记账、待办和日记保存在设备本地 SQLite 中。'),
     ])),
     const SizedBox(height: 14),
+    SectionCard(child: Material(color: Colors.transparent, child: ListTile(title: const Text('账户管理'), leading: const Icon(Icons.account_balance_wallet_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/settings/accounts')))),
+    const SizedBox(height: 14),
     const SectionCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('后续功能安排', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
       SizedBox(height: 12),
-      Text('• 收支编辑、账户与分类管理'),
+      Text('• 分类管理'),
       Text('• 日历与完整提醒系统'),
       Text('• 数据导出、备份和恢复'),
       Text('• AI 自然语言解析与确认'),

@@ -20,6 +20,46 @@ void main() {
     if (!closed) await db.close();
   });
 
+  test(
+    'save and default selection roll back together on database failure',
+    () async {
+      final id = await accounts.create(
+        name: '旧名称',
+        accountType: 'bank',
+        currency: 'CNY',
+        openingBalanceMinor: 100,
+      );
+      await accounts.getDefault();
+      await db.customStatement(
+        "CREATE TRIGGER fail_default BEFORE UPDATE ON app_settings BEGIN SELECT RAISE(ABORT, 'default failed'); END",
+      );
+      await expectLater(
+        accounts.update(
+          id: id,
+          name: '新名称',
+          accountType: 'wechat',
+          openingBalanceMinor: 200,
+          makeDefault: true,
+        ),
+        throwsA(anything),
+      );
+      expect((await accounts.getById(id))!.name, '旧名称');
+      expect((await accounts.getById(id))!.openingBalanceMinor, 100);
+      await expectLater(
+        accounts.create(
+          name: '新账户',
+          accountType: 'cash',
+          currency: 'CNY',
+          openingBalanceMinor: 0,
+          makeDefault: true,
+        ),
+        throwsA(anything),
+      );
+      expect((await accounts.getAccounts()).length, 2);
+      expect((await accounts.getDefault())!.id, 'acc_cash');
+    },
+  );
+
   test('create, edit and validate account and opening balance', () async {
     final id = await accounts.create(
       name: ' 银行卡 ',
