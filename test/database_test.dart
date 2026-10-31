@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifepilot/core/database/app_database.dart';
 import 'package:lifepilot/features/ledger/ledger_repository.dart';
@@ -39,5 +40,18 @@ void main() {
     await repository.toggleTask(tasks.single);
     final updated = await repository.watchTasks().first;
     expect(updated.single.status, 'done');
+  });
+
+  test('inactive account rejects new entries but preserves existing entries', () async {
+    final repository = LedgerRepository(db);
+    final id = await repository.addManual(kind: 'expense', amount: '10', categoryId: 'cat_food');
+    await (db.update(db.accounts)..where((a) => a.id.equals('acc_cash')))
+        .write(const AccountsCompanion(isActive: Value(false)));
+    await expectLater(
+      repository.addManual(kind: 'expense', amount: '5', categoryId: 'cat_food'),
+      throwsFormatException,
+    );
+    await repository.updateManual(id: id, kind: 'expense', amount: '12', categoryId: 'cat_food', accountId: 'acc_cash', transactionDate: DateTime(2026, 1, 1));
+    expect((await repository.watchEntries().first).single.amountMinor, 1200);
   });
 }

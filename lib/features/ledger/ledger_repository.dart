@@ -153,6 +153,7 @@ class LedgerRepository {
         kind: kind,
         categoryId: categoryId,
         accountId: accountId,
+        allowInactiveAccount: existing.accountId == accountId,
       );
       final now = DateTime.now().toUtc().millisecondsSinceEpoch;
       await (db.update(
@@ -196,6 +197,7 @@ class LedgerRepository {
     required String kind,
     required String categoryId,
     required String accountId,
+    bool allowInactiveAccount = false,
   }) async {
     if (kind != 'expense' && kind != 'income') {
       throw const FormatException('手动记账仅支持收入和支出');
@@ -210,6 +212,9 @@ class LedgerRepository {
       db.accounts,
     )..where((a) => a.id.equals(accountId))).getSingleOrNull();
     if (account == null) throw const FormatException('所选账户不存在');
+    if (!account.isActive && !allowInactiveAccount) {
+      throw const FormatException('所选账户已停用');
+    }
     if (account.currency != 'CNY') {
       throw const FormatException('当前版本仅支持人民币账户');
     }
