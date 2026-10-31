@@ -19,14 +19,21 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async => m.createAll(),
         onUpgrade: (m, from, to) async {
-          // Never silently destructively recreate a personal database.
-          throw StateError('Database migration missing: $from -> $to');
+          if (from != 1 || to != 2) {
+            throw StateError('Database migration missing: $from -> $to');
+          }
+          await transaction(() async {
+            await m.addColumn(accounts, accounts.accountType);
+            await m.addColumn(accounts, accounts.isActive);
+            await m.addColumn(categories, categories.iconKey);
+            await m.addColumn(categories, categories.isActive);
+          });
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');

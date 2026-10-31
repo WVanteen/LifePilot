@@ -6,6 +6,8 @@ import 'package:drift/drift.dart';
 class Accounts extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
+  TextColumn get accountType => text().withDefault(const Constant('cash'))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get currency => text().withDefault(const Constant('CNY'))();
   IntColumn get openingBalanceMinor => integer().withDefault(const Constant(0))();
   IntColumn get createdAt => integer()();
@@ -17,6 +19,8 @@ class Categories extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get type => text()(); // expense | income
+  TextColumn get iconKey => text().withDefault(const Constant('default'))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get parentId => text().nullable()();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   @override

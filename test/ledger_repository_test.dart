@@ -140,9 +140,9 @@ void main() {
     },
   );
 
-  test('schema version remains one when no migration is required', () async {
+  test('new database uses schema version two', () async {
     final row = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(row.read<int>('user_version'), 1);
+    expect(row.read<int>('user_version'), 2);
   });
 
   test('file database keeps ledger data after close and reopen', () async {
