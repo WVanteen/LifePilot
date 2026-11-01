@@ -28,7 +28,8 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
         : 'default';
     final form = GlobalKey<FormState>();
     var saving = false;
-    await showDialog<void>(
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<void>(
       context: context,
       builder: (dialog) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -105,6 +106,8 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
         ),
       ),
     );
+    await navigator.push(route);
+    await route.completed;
     name.dispose();
   }
 
@@ -149,24 +152,34 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
   Widget build(BuildContext context) {
     final categories = ref.watch(managedCategoriesProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('分类管理')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => edit(),
-        icon: const Icon(Icons.add),
-        label: const Text('新增分类'),
+      appBar: AppBar(
+        title: const Text('分类管理'),
+        actions: [
+          TextButton.icon(
+            onPressed: () => edit(),
+            icon: const Icon(Icons.add),
+            label: const Text('新增分类'),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'expense', label: Text('支出分类')),
-                ButtonSegment(value: 'income', label: Text('收入分类')),
-              ],
-              selected: {type},
-              onSelectionChanged: (values) =>
-                  setState(() => type = values.first),
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'expense', label: Text('支出分类')),
+                    ButtonSegment(value: 'income', label: Text('收入分类')),
+                  ],
+                  selected: {type},
+                  onSelectionChanged: (values) =>
+                      setState(() => type = values.first),
+                ),
+              ),
             ),
           ),
           Expanded(
@@ -179,7 +192,7 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
                   return const Center(child: Text('暂无分类，请新增分类。'));
                 }
                 return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 96),
+                  padding: const EdgeInsets.only(bottom: 16),
                   itemCount: visible.length,
                   itemBuilder: (context, index) {
                     final category = visible[index];
