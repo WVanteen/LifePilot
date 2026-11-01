@@ -154,6 +154,8 @@ class LedgerRepository {
         categoryId: categoryId,
         accountId: accountId,
         allowInactiveAccount: existing.accountId == accountId,
+        allowInactiveCategory:
+            existing.categoryId == categoryId && existing.kind == kind,
       );
       final now = DateTime.now().toUtc().millisecondsSinceEpoch;
       await (db.update(
@@ -198,6 +200,7 @@ class LedgerRepository {
     required String categoryId,
     required String accountId,
     bool allowInactiveAccount = false,
+    bool allowInactiveCategory = false,
   }) async {
     if (kind != 'expense' && kind != 'income') {
       throw const FormatException('手动记账仅支持收入和支出');
@@ -207,6 +210,9 @@ class LedgerRepository {
     )..where((c) => c.id.equals(categoryId))).getSingleOrNull();
     if (category == null || category.type != kind) {
       throw const FormatException('账目分类与收支类型不匹配');
+    }
+    if (!category.isActive && !allowInactiveCategory) {
+      throw const FormatException('所选分类已停用');
     }
     final account = await (db.select(
       db.accounts,

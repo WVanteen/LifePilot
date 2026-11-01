@@ -6,6 +6,7 @@ import '../features/home/home_page.dart';
 import '../features/ledger/ledger_page.dart';
 import '../features/planner/planner_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/categories/categories_page.dart';
 import '../features/accounts/accounts_page.dart';
 import '../features/accounts/account_form_page.dart';
 
@@ -16,26 +17,65 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => AppShell(shell: shell),
         branches: [
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/', builder: (context, state) => const HomePage()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/ledger', builder: (context, state) => const LedgerPage()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/planner', builder: (context, state) => const PlannerPage()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/assistant', builder: (context, state) => const AssistantPage()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/settings', builder: (context, state) => const SettingsPage(), routes: [
-              GoRoute(path: 'accounts', builder: (context, state) => const AccountsPage(), routes: [
-                GoRoute(path: 'new', builder: (context, state) => const AccountFormPage()),
-                GoRoute(path: ':id/edit', builder: (context, state) => AccountFormPage(accountId: state.pathParameters['id']!)),
-              ]),
-            ]),
-          ]),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/', builder: (context, state) => const HomePage()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/ledger',
+                builder: (context, state) => const LedgerPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/planner',
+                builder: (context, state) => const PlannerPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/assistant',
+                builder: (context, state) => const AssistantPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/settings',
+                builder: (context, state) => const SettingsPage(),
+                routes: [
+                  GoRoute(
+                    path: 'categories',
+                    builder: (context, state) => const CategoriesPage(),
+                  ),
+                  GoRoute(
+                    path: 'accounts',
+                    builder: (context, state) => const AccountsPage(),
+                    routes: [
+                      GoRoute(
+                        path: 'new',
+                        builder: (context, state) => const AccountFormPage(),
+                      ),
+                      GoRoute(
+                        path: ':id/edit',
+                        builder: (context, state) => AccountFormPage(
+                          accountId: state.pathParameters['id']!,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     ],
@@ -54,17 +94,35 @@ class AppShell extends StatelessWidget {
       body: SafeArea(child: shell),
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
-        onDestinationSelected: (index) => shell.goBranch(
-          index,
-          initialLocation: index == shell.currentIndex,
-        ),
+        onDestinationSelected: (index) =>
+            shell.goBranch(index, initialLocation: index == shell.currentIndex),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: '首页'),
-          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet), label: '记账'),
-          NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: '计划'),
-          NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome), label: 'AI'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: '首页',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: Icon(Icons.account_balance_wallet),
+            label: '记账',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: '计划',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome),
+            label: 'AI',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: '我的',
+          ),
         ],
       ),
     );

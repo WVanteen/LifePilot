@@ -39,6 +39,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
   late String? _accountId;
   late DateTime _transactionDate;
   bool _saving = false;
+  bool _accountChosen = false;
 
   @override
   void initState() {
@@ -50,7 +51,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
     _note = TextEditingController(text: transaction?.note ?? '');
     _kind = transaction?.kind ?? 'expense';
     _categoryId = transaction?.categoryId;
-    _accountId = transaction?.accountId ?? 'acc_cash';
+    _accountId = transaction?.accountId;
     _transactionDate =
         DateTime.tryParse(transaction?.localDate ?? '') ?? DateTime.now();
   }
@@ -76,9 +77,15 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
   }
 
   Future<void> _submit() async {
+    final defaultAccount = ref.read(defaultAccountProvider);
+    final accountId = widget.transaction == null && !_accountChosen
+        ? defaultAccount.value?.id
+        : _accountId;
     if (!_formKey.currentState!.validate() ||
         _categoryId == null ||
-        _accountId == null) {
+        accountId == null ||
+        defaultAccount.hasError ||
+        defaultAccount.isLoading) {
       return;
     }
     setState(() => _saving = true);
@@ -89,7 +96,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
           kind: _kind,
           amount: _amount.text,
           categoryId: _categoryId!,
-          accountId: _accountId!,
+          accountId: accountId,
           transactionDate: _transactionDate,
           note: _note.text,
         );
@@ -99,7 +106,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
           kind: _kind,
           amount: _amount.text,
           categoryId: _categoryId!,
-          accountId: _accountId!,
+          accountId: accountId,
           transactionDate: _transactionDate,
           note: _note.text,
         );
@@ -120,24 +127,48 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(ledgerCategoriesProvider);
     final accountsAsync = ref.watch(ledgerAccountsProvider);
+    final defaultAsync = ref.watch(defaultAccountProvider);
     final categories =
         categoriesAsync.value
-            ?.where((category) => category.type == _kind)
+            ?.where(
+              (category) =>
+                  category.type == _kind &&
+                  (category.isActive ||
+                      (category.id == widget.transaction?.categoryId &&
+                          _kind == widget.transaction?.kind)),
+            )
             .toList() ??
         [];
-    final accounts = accountsAsync.value ?? [];
+    final accounts = (accountsAsync.value ?? [])
+        .where(
+          (account) =>
+              account.isActive || account.id == widget.transaction?.accountId,
+        )
+        .toList();
     final selectedCategory =
         categories.any((category) => category.id == _categoryId)
         ? _categoryId
         : null;
-    final selectedAccount = accounts.any((account) => account.id == _accountId)
-        ? _accountId
+    final requestedAccount = widget.transaction == null && !_accountChosen
+        ? defaultAsync.value?.id
+        : _accountId;
+    final selectedAccount =
+        accounts.any((account) => account.id == requestedAccount)
+        ? requestedAccount
         : null;
     final dataError = categoriesAsync.hasError
         ? categoriesAsync.error
         : accountsAsync.hasError
         ? accountsAsync.error
+        : defaultAsync.hasError
+        ? defaultAsync.error
         : null;
+    final balance = selectedAccount == null
+        ? null
+        : ref.watch(accountBalanceProvider(selectedAccount));
+    final selected = accounts
+        .where((account) => account.id == selectedAccount)
+        .firstOrNull;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -162,7 +193,13 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                   ),
                 ),
                 FilledButton(
-                  onPressed: _saving || dataError != null ? null : _submit,
+                  onPressed:
+                      _saving ||
+                          dataError != null ||
+                          accountsAsync.isLoading ||
+                          defaultAsync.isLoading
+                      ? null
+                      : _submit,
                   child: Text(_saving ? '保存中…' : '保存'),
                 ),
               ],
@@ -225,7 +262,9 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                           .map(
                             (category) => DropdownMenuItem(
                               value: category.id,
-                              child: Text(category.name),
+                              child: Text(
+                                '${category.name}${category.isActive ? '' : ' · 已停用'}',
+                              ),
                             ),
                           )
                           .toList(),
@@ -234,8 +273,13 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                           ? null
                           : (value) => setState(() => _categoryId = value),
                     ),
+                    if (!categoriesAsync.isLoading &&
+                        !categoriesAsync.hasError &&
+                        categories.isEmpty)
+                      const Text('没有可用分类，请前往“我的”添加或恢复分类。'),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
+                      key: ValueKey('account-$selectedAccount'),
                       initialValue: selectedAccount,
                       decoration: const InputDecoration(labelText: '账户'),
                       items: accounts
@@ -243,7 +287,8 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                             (account) => DropdownMenuItem(
                               value: account.id,
                               child: Text(
-                                '${account.name} · ${account.currency}',
+                                '${account.name} · ${_typeName(account.accountType)}${account.id == defaultAsync.value?.id ? ' · 默认' : ''}${account.isActive ? '' : ' · 已停用'}',
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           )
@@ -251,8 +296,21 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                       validator: (value) => value == null ? '请选择账户' : null,
                       onChanged: _saving
                           ? null
-                          : (value) => setState(() => _accountId = value),
+                          : (value) => setState(() {
+                              _accountChosen = true;
+                              _accountId = value;
+                            }),
                     ),
+                    if (balance != null && selected != null)
+                      balance.when(
+                        loading: () => const Text('余额加载中…'),
+                        error: (error, _) => Text('余额读取失败：$error'),
+                        data: (value) => Text(
+                          selected.currency == 'CNY'
+                              ? '余额：${formatCny(value)}'
+                              : '余额：${selected.currency} $value 最小单位',
+                        ),
+                      ),
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
                       onPressed: _saving ? null : _pickDate,
@@ -268,7 +326,8 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                       decoration: const InputDecoration(labelText: '备注（可选）'),
                     ),
                     if (categoriesAsync.isLoading ||
-                        accountsAsync.isLoading) ...[
+                        accountsAsync.isLoading ||
+                        defaultAsync.isLoading) ...[
                       const SizedBox(height: 12),
                       const LinearProgressIndicator(),
                     ],
@@ -296,4 +355,14 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
     final fraction = (amountMinor % 100).toString().padLeft(2, '0');
     return '$whole.$fraction';
   }
+
+  static String _typeName(String type) =>
+      const {
+        'cash': '现金',
+        'bank': '银行卡',
+        'wechat': '微信',
+        'alipay': '支付宝',
+        'other': '其他',
+      }[type] ??
+      type;
 }
