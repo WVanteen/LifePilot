@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/database/app_database.dart';
 import '../../core/utils/money.dart';
+import 'transfer_refund_service.dart';
 
 class LedgerRepository {
   LedgerRepository(this.db);
@@ -11,15 +12,39 @@ class LedgerRepository {
   Stream<List<LedgerTransaction>> watchEntries({
     String? kind,
     String? categoryId,
+    String? accountId,
+    String? keyword,
     DateTime? fromDate,
     DateTime? toDate,
+    bool deleted = false,
+    bool sortByAmount = false,
+    bool ascending = false,
   }) {
     final query = db.select(db.ledgerTransactions)
       ..where((t) {
-        var predicate = t.deletedAt.isNull();
+        var predicate = deleted
+            ? t.deletedAt.isNotNull()
+            : t.deletedAt.isNull();
         if (kind != null) predicate = predicate & t.kind.equals(kind);
         if (categoryId != null) {
           predicate = predicate & t.categoryId.equals(categoryId);
+        }
+        if (accountId != null) {
+          predicate =
+              predicate &
+              (t.accountId.equals(accountId) |
+                  t.targetAccountId.equals(accountId));
+        }
+        final search = keyword?.trim();
+        if (search != null && search.isNotEmpty) {
+          final escaped = search
+              .replaceAll(r'\', r'\\')
+              .replaceAll('%', r'\%')
+              .replaceAll('_', r'\_');
+          predicate =
+              predicate &
+              (t.merchant.like('%$escaped%', escapeChar: r'\') |
+                  t.note.like('%$escaped%', escapeChar: r'\'));
         }
         if (fromDate != null) {
           predicate =
@@ -32,7 +57,10 @@ class LedgerRepository {
         return predicate;
       })
       ..orderBy([
-        (t) => OrderingTerm(expression: t.localDate, mode: OrderingMode.desc),
+        (t) => OrderingTerm(
+          expression: sortByAmount ? t.amountMinor : t.localDate,
+          mode: ascending ? OrderingMode.asc : OrderingMode.desc,
+        ),
         (t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
       ]);
     return query.watch();
@@ -74,7 +102,8 @@ class LedgerRepository {
           ),
         ])..where(
           db.ledgerTransactions.deletedAt.isNull() &
-              db.ledgerTransactions.kind.equals('expense') &
+              (db.ledgerTransactions.kind.equals('expense') |
+                  db.ledgerTransactions.kind.equals('refund')) &
               db.ledgerTransactions.localDate.isBiggerOrEqualValue(start) &
               db.ledgerTransactions.localDate.isSmallerThanValue(end),
         );
@@ -87,7 +116,11 @@ class LedgerRepository {
         totals[category.id] = CategoryExpenseTotal(
           categoryId: category.id,
           categoryName: category.name,
-          amountMinor: (previous?.amountMinor ?? 0) + transaction.amountMinor,
+          amountMinor:
+              (previous?.amountMinor ?? 0) +
+              (transaction.kind == 'refund'
+                  ? -transaction.amountMinor
+                  : transaction.amountMinor),
         );
       }
       final result = totals.values.toList()
@@ -103,6 +136,7 @@ class LedgerRepository {
     String accountId = 'acc_cash',
     DateTime? transactionDate,
     String note = '',
+    String merchant = '',
   }) async {
     final amountMinor = parseCnyMinor(amount);
     final now = DateTime.now();
@@ -125,6 +159,7 @@ class LedgerRepository {
               categoryId: Value(categoryId),
               localDate: localYmd(transactionDate ?? now),
               note: Value(_nullableTrimmed(note)),
+              merchant: Value(_nullableTrimmed(merchant)),
               createdAt: ts,
               updatedAt: ts,
             ),
@@ -141,6 +176,7 @@ class LedgerRepository {
     required String accountId,
     required DateTime transactionDate,
     String note = '',
+    String merchant = '',
   }) async {
     final amountMinor = parseCnyMinor(amount);
     await db.transaction(() async {
@@ -149,6 +185,25 @@ class LedgerRepository {
                 ..where((t) => t.id.equals(id) & t.deletedAt.isNull()))
               .getSingleOrNull();
       if (existing == null) throw StateError('账目不存在或已删除');
+      final refunds =
+          await (db.select(db.ledgerTransactions)..where(
+                (t) =>
+                    t.refundOfId.equals(id) &
+                    t.kind.equals('refund') &
+                    t.deletedAt.isNull(),
+              ))
+              .get();
+      final refunded = refunds.fold<int>(
+        0,
+        (sum, row) => sum + row.amountMinor,
+      );
+      if (refunds.isNotEmpty &&
+          (kind != 'expense' ||
+              accountId != existing.accountId ||
+              categoryId != existing.categoryId ||
+              amountMinor < refunded)) {
+        throw StateError('存在关联退款，不能更改账户、分类、类型或将金额降至退款总额以下');
+      }
       await _validateReferences(
         kind: kind,
         categoryId: categoryId,
@@ -168,6 +223,7 @@ class LedgerRepository {
           categoryId: Value(categoryId),
           localDate: Value(localYmd(transactionDate)),
           note: Value(_nullableTrimmed(note)),
+          merchant: Value(_nullableTrimmed(merchant)),
           updatedAt: Value(now),
         ),
       );
@@ -175,15 +231,41 @@ class LedgerRepository {
   }
 
   Future<void> softDelete(String id) async {
-    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-    await (db.update(
+    final entry = await (db.select(
       db.ledgerTransactions,
-    )..where((t) => t.id.equals(id))).write(
-      LedgerTransactionsCompanion(deletedAt: Value(now), updatedAt: Value(now)),
-    );
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+    if (entry != null && (entry.kind == 'transfer' || entry.kind == 'refund')) {
+      return TransferRefundService(db).delete(id);
+    }
+    await db.transaction(() async {
+      final refunds =
+          await (db.select(db.ledgerTransactions)..where(
+                (t) =>
+                    t.refundOfId.equals(id) &
+                    t.kind.equals('refund') &
+                    t.deletedAt.isNull(),
+              ))
+              .get();
+      if (refunds.isNotEmpty) throw StateError('存在关联退款，请先删除退款');
+      final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+      await (db.update(
+        db.ledgerTransactions,
+      )..where((t) => t.id.equals(id))).write(
+        LedgerTransactionsCompanion(
+          deletedAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+    });
   }
 
   Future<void> restore(String id) async {
+    final entry = await (db.select(
+      db.ledgerTransactions,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+    if (entry != null && (entry.kind == 'transfer' || entry.kind == 'refund')) {
+      return TransferRefundService(db).restore(id);
+    }
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     await (db.update(
       db.ledgerTransactions,
@@ -247,6 +329,7 @@ class LedgerSummary {
     for (final row in rows) {
       if (row.kind == 'income') income += row.amountMinor;
       if (row.kind == 'expense') expense += row.amountMinor;
+      if (row.kind == 'refund') expense -= row.amountMinor;
     }
     return LedgerSummary(incomeMinor: income, expenseMinor: expense);
   }

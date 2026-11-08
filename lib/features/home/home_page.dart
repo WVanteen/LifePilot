@@ -12,12 +12,14 @@ class HomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entries = ref.watch(ledgerEntriesProvider);
+    final monthSummary = ref.watch(currentMonthLedgerSummaryProvider);
     final tasks = ref.watch(activeTasksProvider);
     final now = DateTime.now();
-    final month = localYmd(now).substring(0, 7);
-    final monthExpense = entries.value?.where((t) => t.localDate.startsWith(month) && t.kind == 'expense')
-            .fold<int>(0, (sum, t) => sum + t.amountMinor) ?? 0;
+    final monthExpense = monthSummary.when(
+      loading: () => '加载中…',
+      error: (_, _) => '读取失败',
+      data: (summary) => formatCny(summary.expenseMinor),
+    );
     final pending = tasks.value?.where((t) => t.status != 'done').length ?? 0;
     final greeting = now.hour < 11 ? '早上好' : now.hour < 18 ? '下午好' : '晚上好';
 
@@ -30,7 +32,7 @@ class HomePage extends ConsumerWidget {
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 22),
         Row(children: [
-          Expanded(child: _MetricTile(label: '本月支出', value: formatCny(monthExpense), icon: Icons.wallet_outlined)),
+          Expanded(child: _MetricTile(label: '本月支出', value: monthExpense, icon: Icons.wallet_outlined)),
           const SizedBox(width: 12),
           Expanded(child: _MetricTile(label: '未完成待办', value: '$pending 项', icon: Icons.task_alt)),
         ]),

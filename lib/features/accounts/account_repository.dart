@@ -123,11 +123,12 @@ class AccountRepository {
         .customSelect(
           '''
       SELECT a.opening_balance_minor AS opening, a.currency AS currency,
-        COALESCE(SUM(CASE WHEN t.currency = a.currency AND t.kind = 'income' THEN t.amount_minor
-          WHEN t.currency = a.currency AND t.kind = 'expense' THEN -t.amount_minor ELSE 0 END), 0) AS movement,
+        COALESCE(SUM(CASE WHEN t.currency = a.currency AND t.account_id = a.id AND t.kind IN ('income', 'refund') THEN t.amount_minor
+          WHEN t.currency = a.currency AND t.account_id = a.id AND t.kind IN ('expense', 'transfer') THEN -t.amount_minor
+          WHEN t.currency = a.currency AND t.target_account_id = a.id AND t.kind = 'transfer' THEN t.amount_minor ELSE 0 END), 0) AS movement,
         COALESCE(SUM(CASE WHEN t.currency != a.currency THEN 1 ELSE 0 END), 0) AS mismatches
-      FROM accounts a LEFT JOIN ledger_transactions t ON t.account_id = a.id
-        AND t.deleted_at IS NULL AND t.kind IN ('income', 'expense')
+      FROM accounts a LEFT JOIN ledger_transactions t ON (t.account_id = a.id OR t.target_account_id = a.id)
+        AND t.deleted_at IS NULL AND t.kind IN ('income', 'expense', 'transfer', 'refund')
       WHERE a.id = ? GROUP BY a.id
     ''',
           variables: [Variable.withString(accountId)],

@@ -6,6 +6,9 @@ import '../../core/utils/money.dart';
 import '../../shared/section_card.dart';
 import 'add_transaction_sheet.dart';
 import 'ledger_repository.dart';
+import 'ledger_detail_pages.dart';
+import 'ledger_statistics_page.dart';
+import 'extended_transaction_page.dart';
 
 class LedgerPage extends ConsumerStatefulWidget {
   const LedgerPage({super.key});
@@ -17,7 +20,19 @@ class LedgerPage extends ConsumerStatefulWidget {
 class _LedgerPageState extends ConsumerState<LedgerPage> {
   String? _kindFilter;
   String? _categoryFilter;
+  String? _accountFilter;
+  String _keyword = '';
+  final _searchController = TextEditingController();
+  bool _sortAmount = false;
+  bool _ascending = false;
+  int _visibleCount = 50;
   DateTimeRange? _dateRange;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,14 +67,44 @@ class _LedgerPageState extends ConsumerState<LedgerPage> {
               icon: const Icon(Icons.add),
               label: const Text('记一笔'),
             ),
+            IconButton(
+              tooltip: '收支统计',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LedgerStatisticsPage()),
+              ),
+              icon: const Icon(Icons.bar_chart),
+            ),
+            IconButton(
+              tooltip: '回收站',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => LedgerRecycleBinPage(
+                    transactions: ref
+                        .read(ledgerRepositoryProvider)
+                        .watchEntries(deleted: true),
+                    accountNames: accountNames,
+                    categoryNames: categoryNames,
+                    onRestore: ref.read(ledgerRepositoryProvider).restore,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.restore_from_trash_outlined),
+            ),
           ],
+        ),
+        TextButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ExtendedTransactionPage()),
+          ),
+          icon: const Icon(Icons.swap_horiz),
+          label: const Text('转账与退款'),
         ),
         const SizedBox(height: 16),
         _SummaryCard(month: month, summary: summary),
         const SizedBox(height: 14),
         _CategorySummaryCard(expenses: categoryExpenses),
         const SizedBox(height: 14),
-        _buildFilters(categories),
+        _buildFilters(categories, accounts),
         const SizedBox(height: 18),
         Row(
           children: [
@@ -78,7 +123,13 @@ class _LedgerPageState extends ConsumerState<LedgerPage> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => SectionCard(child: Text('读取账本失败：$error')),
           data: (rows) {
-            final filtered = rows.where(_matchesFilters).toList();
+            final filtered = rows.where(_matchesFilters).toList()
+              ..sort((a, b) {
+                final result = _sortAmount
+                    ? a.amountMinor.compareTo(b.amountMinor)
+                    : a.localDate.compareTo(b.localDate);
+                return _ascending ? result : -result;
+              });
             if (filtered.isEmpty) {
               return SectionCard(
                 child: Text(
@@ -87,25 +138,53 @@ class _LedgerPageState extends ConsumerState<LedgerPage> {
               );
             }
             return Column(
-              children: filtered
-                  .map(
-                    (transaction) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _TransactionTile(
-                        transaction: transaction,
-                        categoryName:
-                            categoryNames[transaction.categoryId] ?? '其他',
-                        accountName:
-                            accountNames[transaction.accountId] ?? '未知账户',
-                        onEdit: () => showTransactionSheet(
-                          context,
+              children: [
+                ...filtered
+                    .take(_visibleCount)
+                    .map(
+                      (transaction) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _TransactionTile(
                           transaction: transaction,
+                          categoryName: transaction.kind == 'transfer'
+                              ? '转账'
+                              : transaction.kind == 'refund'
+                              ? '退款 · ${categoryNames[transaction.categoryId] ?? '其他'}'
+                              : categoryNames[transaction.categoryId] ?? '其他',
+                          accountName:
+                              accountNames[transaction.accountId] ?? '未知账户',
+                          onEdit: () => _edit(context, transaction),
+                          onOpen: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => LedgerDetailPage(
+                                transaction: ref
+                                    .read(ledgerRepositoryProvider)
+                                    .watchEntries()
+                                    .map(
+                                      (rows) => rows
+                                          .where(
+                                            (row) => row.id == transaction.id,
+                                          )
+                                          .firstOrNull,
+                                    ),
+                                accountNames: accountNames,
+                                categoryNames: categoryNames,
+                                onEdit: (context, entry) async {
+                                  await _edit(context, entry);
+                                },
+                              ),
+                            ),
+                          ),
+                          onDelete: () => _delete(transaction),
                         ),
-                        onDelete: () => _delete(transaction),
                       ),
                     ),
-                  )
-                  .toList(),
+                if (filtered.length > _visibleCount)
+                  TextButton(
+                    onPressed: () => setState(() => _visibleCount += 50),
+                    child: const Text('加载更多'),
+                  ),
+              ],
             );
           },
         ),
@@ -113,7 +192,19 @@ class _LedgerPageState extends ConsumerState<LedgerPage> {
     );
   }
 
-  Widget _buildFilters(List<Category> categories) {
+  Future<void> _edit(BuildContext context, LedgerTransaction entry) async {
+    if (entry.kind == 'transfer' || entry.kind == 'refund') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ExtendedTransactionPage(transaction: entry),
+        ),
+      );
+    } else {
+      await showTransactionSheet(context, transaction: entry);
+    }
+  }
+
+  Widget _buildFilters(List<Category> categories, List<Account> accounts) {
     final matchingCategories = categories
         .where(
           (category) => _kindFilter == null || category.type == _kindFilter,
@@ -174,6 +265,45 @@ class _LedgerPageState extends ConsumerState<LedgerPage> {
             onChanged: (value) => setState(() => _categoryFilter = value),
           ),
           const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: _accountFilter,
+            decoration: const InputDecoration(labelText: '筛选账户', isDense: true),
+            items: accounts
+                .map(
+                  (account) => DropdownMenuItem(
+                    value: account.id,
+                    child: Text(account.name),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => setState(() => _accountFilter = value),
+          ),
+          TextField(
+            controller: _searchController,
+            decoration: const InputDecoration(labelText: '搜索商家或备注'),
+            onChanged: (value) => setState(() => _keyword = value),
+          ),
+          Wrap(
+            spacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('按日期'),
+                selected: !_sortAmount,
+                onSelected: (_) => setState(() => _sortAmount = false),
+              ),
+              ChoiceChip(
+                label: const Text('按金额'),
+                selected: _sortAmount,
+                onSelected: (_) => setState(() => _sortAmount = true),
+              ),
+              ChoiceChip(
+                label: Text(_ascending ? '升序' : '降序'),
+                selected: _ascending,
+                onSelected: (_) => setState(() => _ascending = !_ascending),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: _selectDateRange,
             icon: const Icon(Icons.date_range_outlined),
@@ -190,6 +320,17 @@ class _LedgerPageState extends ConsumerState<LedgerPage> {
 
   bool _matchesFilters(LedgerTransaction transaction) {
     if (_kindFilter != null && transaction.kind != _kindFilter) return false;
+    if (_accountFilter != null &&
+        transaction.accountId != _accountFilter &&
+        transaction.targetAccountId != _accountFilter) {
+      return false;
+    }
+    final search = _keyword.trim().toLowerCase();
+    if (search.isNotEmpty &&
+        !(transaction.merchant ?? '').toLowerCase().contains(search) &&
+        !(transaction.note ?? '').toLowerCase().contains(search)) {
+      return false;
+    }
     if (_categoryFilter != null && transaction.categoryId != _categoryFilter) {
       return false;
     }
@@ -205,12 +346,19 @@ class _LedgerPageState extends ConsumerState<LedgerPage> {
   }
 
   bool get _hasFilters =>
-      _kindFilter != null || _categoryFilter != null || _dateRange != null;
+      _kindFilter != null ||
+      _categoryFilter != null ||
+      _accountFilter != null ||
+      _keyword.trim().isNotEmpty ||
+      _dateRange != null;
 
   void _clearFilters() {
     setState(() {
       _kindFilter = null;
       _categoryFilter = null;
+      _accountFilter = null;
+      _keyword = '';
+      _searchController.clear();
       _dateRange = null;
     });
   }
@@ -382,6 +530,7 @@ class _TransactionTile extends StatelessWidget {
     required this.accountName,
     required this.onEdit,
     required this.onDelete,
+    required this.onOpen,
   });
 
   final LedgerTransaction transaction;
@@ -389,46 +538,54 @@ class _TransactionTile extends StatelessWidget {
   final String accountName;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) => SectionCard(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-    child: ListTile(
-      contentPadding: EdgeInsets.zero,
-      onTap: onEdit,
-      leading: CircleAvatar(
-        child: Icon(
-          transaction.kind == 'expense'
-              ? Icons.arrow_upward
-              : Icons.arrow_downward,
+    child: Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        onTap: onOpen,
+        leading: CircleAvatar(
+          child: Icon(
+            transaction.kind == 'expense'
+                ? Icons.arrow_upward
+                : Icons.arrow_downward,
+          ),
         ),
-      ),
-      title: Text(categoryName),
-      subtitle: Text(
-        '${transaction.localDate} · $accountName'
-        '${transaction.note == null ? '' : '\n${transaction.note}'}',
-      ),
-      isThreeLine: transaction.note != null,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '${transaction.kind == 'expense' ? '-' : '+'}'
-            '${formatCny(transaction.amountMinor)}',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-          PopupMenuButton<String>(
-            tooltip: '账目操作',
-            onSelected: (action) {
-              if (action == 'edit') onEdit();
-              if (action == 'delete') onDelete();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'edit', child: Text('编辑')),
-              PopupMenuItem(value: 'delete', child: Text('删除')),
-            ],
-          ),
-        ],
+        title: Text(categoryName),
+        subtitle: Text(
+          '${transaction.localDate} · $accountName'
+          '${transaction.note == null ? '' : '\n${transaction.note}'}',
+        ),
+        isThreeLine: transaction.note != null,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${transaction.kind == 'expense'
+                  ? '-'
+                  : transaction.kind == 'transfer'
+                  ? ''
+                  : '+'}'
+              '${formatCny(transaction.amountMinor)}',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            PopupMenuButton<String>(
+              tooltip: '账目操作',
+              onSelected: (action) {
+                if (action == 'edit') onEdit();
+                if (action == 'delete') onDelete();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('编辑')),
+                PopupMenuItem(value: 'delete', child: Text('删除')),
+              ],
+            ),
+          ],
+        ),
       ),
     ),
   );

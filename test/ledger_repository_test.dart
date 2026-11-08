@@ -48,11 +48,11 @@ void main() {
         note: '公交卡充值',
       );
 
-    final allEntries = await repository.watchEntries().first;
-    expect(allEntries.map((entry) => entry.localDate), [
-      '2026-10-06',
-      '2026-10-04',
-    ]);
+      final allEntries = await repository.watchEntries().first;
+      expect(allEntries.map((entry) => entry.localDate), [
+        '2026-10-06',
+        '2026-10-04',
+      ]);
 
       final expenses = await repository
           .watchEntries(
@@ -115,6 +115,63 @@ void main() {
     expect(breakdown.single.categoryId, 'cat_food');
     expect(breakdown.single.amountMinor, 3875);
   });
+
+  test(
+    'merchant and combined account, date, category, keyword and amount sorting',
+    () async {
+      await repository.addManual(
+        kind: 'expense',
+        amount: '5.00',
+        categoryId: 'cat_food',
+        accountId: 'acc_cash',
+        transactionDate: DateTime(2026, 10, 2),
+        merchant: '百分%商店',
+        note: '午饭',
+      );
+      await repository.addManual(
+        kind: 'expense',
+        amount: '3.00',
+        categoryId: 'cat_food',
+        accountId: 'acc_cash',
+        transactionDate: DateTime(2026, 10, 3),
+        merchant: '百分%商店',
+      );
+      await repository.addManual(
+        kind: 'expense',
+        amount: '9.00',
+        categoryId: 'cat_transport',
+        transactionDate: DateTime(2026, 10, 3),
+        merchant: '其他商店',
+      );
+      final rows = await repository
+          .watchEntries(
+            kind: 'expense',
+            categoryId: 'cat_food',
+            accountId: 'acc_cash',
+            fromDate: DateTime(2026, 10, 1),
+            toDate: DateTime(2026, 10, 31),
+            keyword: '%',
+            sortByAmount: true,
+            ascending: true,
+          )
+          .first;
+      expect(rows.map((row) => row.amountMinor), [300, 500]);
+      expect(rows.last.merchant, '百分%商店');
+      await repository.updateManual(
+        id: rows.last.id,
+        kind: 'expense',
+        amount: '5.00',
+        categoryId: 'cat_food',
+        accountId: 'acc_cash',
+        transactionDate: DateTime(2026, 10, 2),
+        merchant: '新商家',
+      );
+      expect(
+        (await repository.watchEntries(keyword: '新商家').first).single.id,
+        rows.last.id,
+      );
+    },
+  );
 
   test(
     'invalid references roll back without inserting a transaction',

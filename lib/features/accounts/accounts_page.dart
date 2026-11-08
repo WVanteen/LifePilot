@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/app_database.dart';
 import '../../core/providers.dart';
 import '../../core/utils/money.dart';
+import '../ledger/extended_transaction_page.dart';
 
 const accountTypeLabels = {'cash': '现金', 'bank': '银行卡', 'wechat': '微信', 'alipay': '支付宝', 'other': '其他'};
 const accountTypeIcons = {'cash': Icons.payments_outlined, 'bank': Icons.account_balance_outlined, 'wechat': Icons.chat_outlined, 'alipay': Icons.account_balance_wallet_outlined, 'other': Icons.wallet_outlined};
@@ -27,6 +28,7 @@ class AccountsPage extends ConsumerWidget {
           final total = balances.any((b) => b.hasError) ? '读取失败' : balances.any((b) => b.isLoading || !b.hasValue) ? '加载中…' : formatCny(balances.fold<int>(0, (sum, b) => sum + b.requireValue));
           return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), children: [
             Card(child: ListTile(title: const Text('启用账户总余额（人民币）'), subtitle: Text(total, style: Theme.of(context).textTheme.headlineSmall))),
+            Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ExtendedTransactionPage())), icon: const Icon(Icons.swap_horiz), label: const Text('账户转账'))),
             if (rows.any((a) => a.currency != 'CNY')) const Padding(padding: EdgeInsets.all(8), child: Text('其他币种未计入人民币总额。')),
             if (defaultAccount.hasError) Text('读取默认账户失败：${defaultAccount.error}'),
             const SizedBox(height: 12),

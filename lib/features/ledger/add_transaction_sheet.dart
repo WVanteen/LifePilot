@@ -34,6 +34,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amount;
   late final TextEditingController _note;
+  late final TextEditingController _merchant;
   late String _kind;
   late String? _categoryId;
   late String? _accountId;
@@ -49,6 +50,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
       text: transaction == null ? '' : _amountInput(transaction.amountMinor),
     );
     _note = TextEditingController(text: transaction?.note ?? '');
+    _merchant = TextEditingController(text: transaction?.merchant ?? '');
     _kind = transaction?.kind ?? 'expense';
     _categoryId = transaction?.categoryId;
     _accountId = transaction?.accountId;
@@ -60,6 +62,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
   void dispose() {
     _amount.dispose();
     _note.dispose();
+    _merchant.dispose();
     super.dispose();
   }
 
@@ -99,6 +102,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
           accountId: accountId,
           transactionDate: _transactionDate,
           note: _note.text,
+          merchant: _merchant.text,
         );
       } else {
         await repository.updateManual(
@@ -109,6 +113,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
           accountId: accountId,
           transactionDate: _transactionDate,
           note: _note.text,
+          merchant: _merchant.text,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -316,6 +321,13 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                       onPressed: _saving ? null : _pickDate,
                       icon: const Icon(Icons.calendar_today_outlined),
                       label: Text('交易日期：${localYmd(_transactionDate)}'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _merchant,
+                      enabled: !_saving,
+                      maxLength: 100,
+                      decoration: const InputDecoration(labelText: '商家（可选）'),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
